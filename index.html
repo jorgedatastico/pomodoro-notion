@@ -1,116 +1,101 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Pomodoro</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="UTF-8">
+<title>Pomodoro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      background: #191919; /* gris oscuro estilo Notion */
-      color: #fff;
-      margin: 0;
-      padding: 20px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
-    .timer {
-      text-align: center;
-    }
-    .time {
-      font-size: 100px;
-      font-weight: bold;
-      margin-bottom: 15px;
-    }
-    .status {
-      font-size: 18px;
-      color: #aaa;
-    }
-  </style>
+<style>
+  :root{
+    --bg:#191919; /* gris Notion */
+    --fg:#ffffff;
+    --muted:#b3b9c4;
+  }
+  /* Evita scroll dentro del iframe */
+  html, body {
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  }
+  /* Contenedor fluido que respeta el alto disponible del iframe */
+  .wrap{
+    padding: 12px;      /* padding pequeño para no forzar scroll */
+    display: grid;
+    place-items: center;
+  }
+  .timer{
+    text-align: center;
+  }
+  /* Tamaño del reloj que se adapta al ancho del iframe,
+     sin pasarse (clamp: min 44px, ideal 14vw, max 96px) */
+  .time{
+    font-weight: 800;
+    letter-spacing: 1px;
+    line-height: 1;
+    font-size: clamp(44px, 14vw, 96px);
+    margin: 6px 0 8px 0;
+  }
+  .status{
+    font-size: clamp(12px, 2.8vw, 18px);
+    color: var(--muted);
+    margin: 0;
+  }
+</style>
 </head>
 <body>
-  <div class="timer">
-    <div class="time" id="display">30:00</div>
-    <div class="status" id="status">Listo</div>
+  <div class="wrap">
+    <div class="timer">
+      <div class="time" id="display">30:00</div>
+      <p class="status" id="status">Elige una tarea</p>
+    </div>
   </div>
 
-  <script>
-    // Configuración
-    const WORK = 30 * 60;      // 30 min trabajo
-    const SHORT_BREAK = 5 * 60; // 5 min descanso corto
-    const LONG_BREAK = 15 * 60; // 15 min descanso largo
-    const LONG_BREAK_INTERVAL = 4; // cada 4 pomodoros → descanso largo
+<script>
+  // Config: 30/5/15 con descanso largo cada 4
+  const WORK = 30*60, SHORT_BREAK = 5*60, LONG_BREAK = 15*60, LONG_EVERY = 4;
 
-    let remaining = WORK;
-    let running = false;
-    let interval = null;
-    let cycleCount = 0; // cuántos pomodoros terminados
-    let mode = "work"; // "work", "short", "long"
+  let remaining = WORK, running = false, t = null, cycles = 0, mode = "work";
 
-    const display = document.getElementById("display");
-    const status = document.getElementById("status");
+  const display = document.getElementById("display");
+  const status  = document.getElementById("status");
 
-    function render() {
-      let m = Math.floor(remaining / 60);
-      let s = remaining % 60;
-      display.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-    }
+  function render(){
+    const m = Math.floor(remaining/60), s = remaining%60;
+    display.textContent = `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  }
+  function tick(){
+    if(remaining>0){ remaining--; render(); return; }
+    clearInterval(t); running = false;
 
-    function tick() {
-      if (remaining > 0) {
-        remaining--;
-        render();
-      } else {
-        clearInterval(interval);
-        running = false;
-
-        if (mode === "work") {
-          cycleCount++;
-          if (cycleCount % LONG_BREAK_INTERVAL === 0) {
-            mode = "long";
-            remaining = LONG_BREAK;
-            status.textContent = "🌙 Descanso largo";
-          } else {
-            mode = "short";
-            remaining = SHORT_BREAK;
-            status.textContent = "☕ Descanso corto";
-          }
-          start();
-        } else {
-          mode = "work";
-          remaining = WORK;
-          status.textContent = "🔔 Nuevo pomodoro";
-          start();
-        }
+    if(mode==="work"){
+      cycles++;
+      if(cycles % LONG_EVERY === 0){
+        mode = "long"; remaining = LONG_BREAK; status.textContent = "🌙 Descanso largo";
+      }else{
+        mode = "short"; remaining = SHORT_BREAK; status.textContent = "☕ Descanso corto";
       }
+      start(); // auto-continúa
+    }else{
+      mode = "work"; remaining = WORK; status.textContent = "🔔 Nuevo pomodoro"; start();
     }
+  }
+  function start(){ if(running) return; running = true; t = setInterval(tick, 1000); if(mode==="work") status.textContent = "▶️ En trabajo"; }
+  function pause(){ if(!running) return; running = false; clearInterval(t); status.textContent = "⏸️ Pausado"; }
+  function stop(){ running = false; clearInterval(t); mode="work"; remaining = WORK; render(); status.textContent = "Elige una tarea"; }
 
-    function start() {
-      if (running) return;
-      running = true;
-      interval = setInterval(tick, 1000);
-      status.textContent = mode === "work" ? "▶️ En trabajo" : status.textContent;
-    }
+  // Auto-ajuste: si Notion cambia el ancho del iframe, recalcula (por si cambias columna o ancho)
+  new ResizeObserver(() => { /* font-size usa clamp, no necesitamos recalcular nada más */ })
+    .observe(document.body);
 
-    function pause() {
-      running = false;
-      clearInterval(interval);
-      status.textContent = "⏸️ Pausado";
-    }
-
-    function stop() {
-      running = false;
-      clearInterval(interval);
-      mode = "work";
-      remaining = WORK;
-      render();
-      status.textContent = "Elige una tarea";
-    }
-
-    render();
-  </script>
+  render();
+  // Si lo controlas desde Notion/Make, deja start/pause/stop “vacíos” para ser llamados externamente.
+  // Si quieres que arranque solo al cargar, descomenta:
+  // start();
+</script>
 </body>
 </html>
