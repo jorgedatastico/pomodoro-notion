@@ -4,65 +4,53 @@
 <meta charset="UTF-8">
 <title>Pomodoro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <style>
   :root{
     --bg:#191919; /* gris Notion */
     --fg:#ffffff;
     --muted:#b3b9c4;
   }
-  /* Evita scroll dentro del iframe */
-  html, body {
-    height: auto;
-    min-height: 0;
-    overflow: hidden;
-    margin: 0;
-    padding: 40px 0 0 0;
+  body {
     background: var(--bg);
     color: var(--fg);
     font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
   }
-  /* Contenedor fluido que respeta el alto disponible del iframe */
-  .wrap{
-    padding: 12px;      /* padding pequeño para no forzar scroll */
-    display: grid;
-    place-items: center;
-  }
-  .timer{
+  .timer {
     text-align: center;
+    margin-top: 40px;
   }
-  /* Tamaño del reloj que se adapta al ancho del iframe,
-     sin pasarse (clamp: min 44px, ideal 14vw, max 96px) */
-  .time{
-    font-weight: 800;
-    letter-spacing: 1px;
-    line-height: 1;
+  .time {
     font-size: clamp(44px, 14vw, 96px);
-    margin: 6px 0 8px 0;
+    font-weight: bold;
+    line-height: 1;
   }
-  .status{
+  .status {
     font-size: clamp(12px, 2.8vw, 18px);
     color: var(--muted);
-    margin: 0;
+    margin-top: 10px;
   }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="timer">
-      <div class="time" id="display">30:00</div>
-      <p class="status" id="status">Elige una tarea</p>
-    </div>
+  <div class="timer">
+    <div class="time" id="display">30:00</div>
+    <p class="status" id="status">Empieza con una tarea</p>
   </div>
 
 <script>
-  // Config: 30/5/15 con descanso largo cada 4
+  // === CONFIG ===
   const WORK = 30*60, SHORT_BREAK = 5*60, LONG_BREAK = 15*60, LONG_EVERY = 4;
+  const STATE_URL = "https://api.jsonbin.io/v3/b/68dd60a0ae596e708f02af3d/latest"; // ⚠️ cambia <TU_BIN_ID>
+  const STATE_HEADERS = {"X-Master-Key": "$2a$10$Ch2bMLEE10ANDRfOM/joselkpBQjoVe1/AZs.aylCEcpX97KlNvlq"}; // si es público; si es privado: { "X-Master-Key": "TU_API_KEY" }
 
+  // === ESTADO DEL POMODORO ===
   let remaining = WORK, running = false, t = null, cycles = 0, mode = "work";
+  let lastAction = "none";
 
-  const display = document.getElementById("display");
-  const status  = document.getElementById("status");
+  const display=document.getElementById("display");
+  const status=document.getElementById("status");
 
   function render(){
     const m = Math.floor(remaining/60), s = remaining%60;
@@ -70,32 +58,62 @@
   }
   function tick(){
     if(remaining>0){ remaining--; render(); return; }
-    clearInterval(t); running = false;
+    clearInterval(t); running=false;
 
     if(mode==="work"){
       cycles++;
       if(cycles % LONG_EVERY === 0){
-        mode = "long"; remaining = LONG_BREAK; status.textContent = "🌙 Descanso largo";
-      }else{
-        mode = "short"; remaining = SHORT_BREAK; status.textContent = "☕ Descanso corto";
+        mode="long"; remaining=LONG_BREAK; status.textContent="🌙 Descanso largo";
+      } else {
+        mode="short"; remaining=SHORT_BREAK; status.textContent="☕ Descanso corto";
       }
-      start(); // auto-continúa
-    }else{
-      mode = "work"; remaining = WORK; status.textContent = "🔔 Nuevo pomodoro"; start();
+      start();
+    } else {
+      mode="work"; remaining=WORK; status.textContent="🔔 Nuevo pomodoro"; start();
     }
   }
-  function start(){ if(running) return; running = true; t = setInterval(tick, 1000); if(mode==="work") status.textContent = "▶️ En trabajo"; }
-  function pause(){ if(!running) return; running = false; clearInterval(t); status.textContent = "⏸️ Pausado"; }
-  function stop(){ running = false; clearInterval(t); mode="work"; remaining = WORK; render(); status.textContent = "Elige una tarea"; }
+  function start(){
+    if(running) return;
+    running = true;
+    t=setInterval(tick,1000);
+    if(mode==="work") status.textContent="▶️ En trabajo";
+  }
+  function pause(){
+    if(!running) return;
+    running=false;
+    clearInterval(t);
+    status.textContent="⏸️ Pausado";
+  }
+  function stop(){
+    running=false;
+    clearInterval(t);
+    mode="work";
+    remaining=WORK;
+    render();
+    status.textContent="Listo";
+  }
 
-  // Auto-ajuste: si Notion cambia el ancho del iframe, recalcula (por si cambias columna o ancho)
-  new ResizeObserver(() => { /* font-size usa clamp, no necesitamos recalcular nada más */ })
-    .observe(document.body);
+  // === LEER JSONBIN (acción desde Notion/Make) ===
+  async function pollState(){
+    try{
+      const res = await fetch(STATE_URL, { headers: STATE_HEADERS, cache: "no-store" });
+      if(!res.ok) return;
+      const data = await res.json();
+      const action = data.record ? data.record.action : data.action;
 
+      if(action && action !== lastAction){
+        if(action==="start") start();
+        if(action==="pause") pause();
+        if(action==="stop")  stop();
+        lastAction = action;
+      }
+    }catch(e){
+      console.error("Error leyendo JSONBin", e);
+    }
+  }
+
+  setInterval(pollState, 1500); // cada 1,5 s revisa cambios
   render();
-  // Si lo controlas desde Notion/Make, deja start/pause/stop “vacíos” para ser llamados externamente.
-  // Si quieres que arranque solo al cargar, descomenta:
-  // start();
 </script>
 </body>
 </html>
