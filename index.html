@@ -1,76 +1,116 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<title>Pomodoro Controlado</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#0f172a;color:#fff;margin:0;padding:24px;display:flex;justify-content:center}
-  .card{max-width:520px;width:100%;background:#0b1220;border:1px solid #223045;border-radius:16px;padding:24px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
-  h2{margin:0 0 8px 0}
-  .time{font-size:76px;letter-spacing:2px;margin:8px 0 4px 0;text-align:center}
-  .status{font-size:14px;color:#aab; text-align:center}
-</style>
+  <meta charset="UTF-8">
+  <title>Pomodoro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #2f3437; /* gris oscuro estilo Notion */
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .timer {
+      text-align: center;
+    }
+    .time {
+      font-size: 80px;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+    .status {
+      font-size: 18px;
+      color: #aaa;
+    }
+  </style>
 </head>
 <body>
-<div class="card">
-  <h2>🍅 Pomodoro</h2>
-  <div class="time" id="display">25:00</div>
-  <div class="status" id="status">Esperando orden…</div>
-</div>
+  <div class="timer">
+    <div class="time" id="display">30:00</div>
+    <div class="status" id="status">Listo</div>
+  </div>
 
-<script>
-  // Duración de trabajo fija a 25' (ajusta si quieres 30: cambia a 30*60)
-  const DURATION = 25 * 60;
-  let remaining = DURATION;
-  let running = false;
-  let timer = null;
+  <script>
+    // Configuración
+    const WORK = 30 * 60;      // 30 min trabajo
+    const SHORT_BREAK = 5 * 60; // 5 min descanso corto
+    const LONG_BREAK = 15 * 60; // 15 min descanso largo
+    const LONG_BREAK_INTERVAL = 4; // cada 4 pomodoros → descanso largo
 
-  const display = document.getElementById('display');
-  const status  = document.getElementById('status');
+    let remaining = WORK;
+    let running = false;
+    let interval = null;
+    let cycleCount = 0; // cuántos pomodoros terminados
+    let mode = "work"; // "work", "short", "long"
 
-  function render(){
-    const m = Math.floor(remaining/60), s = remaining%60;
-    display.textContent = `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  }
-  function tick(){
-    if (remaining>0){ remaining--; render(); }
-    else { stop(); status.textContent = '✅ Completado'; }
-  }
-  function start(){
-    if (running) return;
-    running = true;
-    status.textContent = '▶️ En marcha';
-    timer = setInterval(tick,1000);
-  }
-  function pause(){
-    if (!running) return;
-    running = false;
-    status.textContent = '⏸️ Pausado';
-    clearInterval(timer);
-  }
-  function stop(){
-    running = false;
-    clearInterval(timer);
-    remaining = DURATION;
+    const display = document.getElementById("display");
+    const status = document.getElementById("status");
+
+    function render() {
+      let m = Math.floor(remaining / 60);
+      let s = remaining % 60;
+      display.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+
+    function tick() {
+      if (remaining > 0) {
+        remaining--;
+        render();
+      } else {
+        clearInterval(interval);
+        running = false;
+
+        if (mode === "work") {
+          cycleCount++;
+          if (cycleCount % LONG_BREAK_INTERVAL === 0) {
+            mode = "long";
+            remaining = LONG_BREAK;
+            status.textContent = "🌙 Descanso largo";
+          } else {
+            mode = "short";
+            remaining = SHORT_BREAK;
+            status.textContent = "☕ Descanso corto";
+          }
+          start();
+        } else {
+          mode = "work";
+          remaining = WORK;
+          status.textContent = "🔔 Nuevo pomodoro";
+          start();
+        }
+      }
+    }
+
+    function start() {
+      if (running) return;
+      running = true;
+      interval = setInterval(tick, 1000);
+      status.textContent = mode === "work" ? "▶️ En trabajo" : status.textContent;
+    }
+
+    function pause() {
+      running = false;
+      clearInterval(interval);
+      status.textContent = "⏸️ Pausado";
+    }
+
+    function stop() {
+      running = false;
+      clearInterval(interval);
+      mode = "work";
+      remaining = WORK;
+      render();
+      status.textContent = "Listo";
+    }
+
     render();
-    status.textContent = '⏹️ Detenido';
-  }
-
-  // 🔄 Polling cada 2s a Make: debe responder JSON { "action": "start|pause|stop" }
-  const ENDPOINT = 'https://hook.eu1.make.com/TU_ENDPOINT_DE_LECTURA';
-  async function poll(){
-    try{
-      const res = await fetch(ENDPOINT, { cache:'no-store' });
-      if (!res.ok) return;
-      const { action } = await res.json();
-      if (action === 'start') start();
-      if (action === 'pause') pause();
-      if (action === 'stop')  stop();
-    }catch(e){ /* ignorar errores de red */ }
-  }
-  setInterval(poll, 2000);
-  render();
-</script>
+  </script>
 </body>
 </html>
